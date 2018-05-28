@@ -91,6 +91,14 @@ class gnhast:
         self.debug = False
 
     def parse_convert_to_int(self, value, ptype):
+        """Convert a parsed string to it's correct type
+
+        :param value: string value to convert
+        :param ptype: self.cf_XXX type to use in conversion
+        :returns: the integer value of the config option
+        :rtype: int
+
+        """
         if isinstance(value, int):
             return value
         return ptype.index(value)
@@ -100,6 +108,16 @@ class gnhast:
             print('DEBUG: ' + thing)
 
     def new_device(self, uid, name, type, subtype):
+        """Create a new device and insert it to the device table
+
+        :param uid: Device UID
+        :param name: Device Name
+        :param type: Device type (int)
+        :param subtype: Device subtype (int)
+        :returns: new device, appended to device list
+        :rtype: dict
+
+        """
         dev = copy.deepcopy(self.DEVICE)
         dev['name'] = name
         dev['devt'] = type
@@ -110,6 +128,10 @@ class gnhast:
 
     def parse_cfg(self):
         """Parse a config file
+
+        :returns: Configuration dict
+        :rtype: dict
+
         """
         modcfg = ''
         with open(self.cfg, "r") as f:
@@ -159,6 +181,15 @@ class gnhast:
         return self.config
 
     def gn_scale_temp(self, temp, curscale, newscale):
+        """Rescale a temperature
+
+        :param temp: current temp
+        :param curscale: current scale
+        :param newscale: new scale
+        :returns: temperature in new scale
+        :rtype: float
+
+        """
         ureg = UnitRegistry()
         Q_ = ureg.Quantity
 
@@ -182,6 +213,14 @@ class gnhast:
         return temp
 
     def word_to_dev(self, device, cmdword):
+        """Convert a gnhast protocol command word to data and store in device
+
+        :param device: device to store data in
+        :param cmdword: word to parse
+        :returns: nothing
+        :rtype: 
+
+        """
         # take a string like devt:1 and import it to a device
         data = cmdword.split(':')
         vwords = ['uid', 'name', 'rate', 'rrdname', 'devt', 'proto',
@@ -209,7 +248,13 @@ class gnhast:
         device[data[0]] = data[1]
 
     def command_reg(self, cmd_word):
-        # handle a register command
+        """Handle a reg command
+
+        :param cmd_word: list of command word pairs
+        :returns: nothing
+        :rtype: 
+
+        """
         if not cmd_word[0] or cmd_word[0] == '':
             return
 
@@ -223,13 +268,26 @@ class gnhast:
         self.dprint("Added device: {0}".format(dev['name']))
 
     def find_dev_byuid(self, uid):
+        """Simple search for a device entry by uid
+
+        :param uid: uid to search for
+        :returns: device dict or None
+        :rtype: dict
+
+        """
         for dev in self.devices:
             if uid == dev['uid']:
                 return dev
         return None
 
     def command_upd(self, cmd_word):
-        # handle an update command
+        """Handle an update command (upd)
+
+        :param cmd_word: list of command word pairs
+        :returns: nothing
+        :rtype: 
+
+        """
         if not cmd_word[0] or cmd_word[0] == '':
             return
 
@@ -251,6 +309,13 @@ class gnhast:
         self.dprint("Updated device: {0}".format(dev['name']))
         
     async def gn_register_device(self, dev):
+        """Register a new device with gnhast
+
+        :param dev: device to register
+        :returns: nothing
+        :rtype: 
+
+        """
         if dev['name'] == '' or dev['uid'] == '':
             return
         if dev['type'] == 0 or dev['subtype'] == 0:
@@ -266,6 +331,13 @@ class gnhast:
         await writer.drain()
 
     async def gn_update_device(self, dev):
+        """Update the data for a device with gnhast
+
+        :param dev: device to update
+        :returns: 
+        :rtype: 
+
+        """
         if dev['name'] == '' or dev['uid'] == '':
             return
         if dev['type'] == 0 or dev['subtype'] == 0:
@@ -299,15 +371,36 @@ class gnhast:
             print("WARNING: Collector is non-functional")
         
     async def gn_disconnect(self):
+        """Send a disconnect command to gnhastd
+
+        :returns: 
+        :rtype: 
+
+        """
         self.writer.write("disconnect\n".encode())
         await self.writer.drain()
 
     async def gn_client_name(self, name):
+        """Send our client name to gnhastd
+
+        :param name: the name of our collector
+        :returns: 
+        :rtype: 
+
+        """
         send = "client client:{0}\n".format(name)
         self.writer.write(send.encode())
         await self.writer.drain()
 
     async def shutdown(self, sig, loop):
+        """Shutdown the collector
+
+        :param sig: Signal we recieved
+        :param loop: the asyncio loop
+        :returns: nothing
+        :rtype: 
+
+        """
         self.dprint('caught {0}'.format(sig.name))
         await self.gn_disconnect()
         tasks = [task for task in asyncio.Task.all_tasks() if task is not
@@ -317,11 +410,25 @@ class gnhast:
         self.dprint('finished awaiting cancelled tasks, results: {0}'.format(results))
         loop.stop()
 
-    async def gn_connect(self, host, port):
+    async def gn_connect(self, host='127.0.0.1', port=2920):
+        """Create a new connection to gnhastd server
+
+        :param host: gnhastd host (default 127.0.0.1)
+        :param port: gnhastd port (default 2920)
+        :returns: the gnhastd object
+        :rtype: 
+
+        """
         self.reader, self.writer = await asyncio.open_connection(host, port, loop=self.loop)
         return self
 
     async def gnhastd_listener(self):
+        """Listen to gnhastd for commands and info
+
+        :returns: 
+        :rtype: 
+
+        """
         valid_data = True
         while valid_data:
             data = await self.reader.readline()
@@ -347,6 +454,13 @@ class gnhast:
                     print('WARNING: Unhandled command')
                     
     async def gn_build_client(self, client_name):
+        """Build a new client for gnhastd
+
+        :param client_name: our client name
+        :returns: 
+        :rtype: 
+
+        """
         # read our config file
         self.parse_cfg()
         # open a connection to gnhastd
