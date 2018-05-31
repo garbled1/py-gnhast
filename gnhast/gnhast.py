@@ -11,44 +11,15 @@ import signal
 import re
 import copy
 
-# Simple c-like enum. Sigh.
-class DEVTYPE:
-    DEVICE_NONE, DEVICE_SWITCH, DEVICE_DIMMER, \
-        DEVICE_SENSOR, DEVICE_TIMER, DEVICE_BLIND, \
-        *_ = range(0, 100)
-
-# Protocol is kinda useless, so I'm just skipping it until I nuke it from the
-# main tree
-
-class SUBTYPE:
-    SUBTYPE_NONE, SUBTYPE_SWITCH, SUBTYPE_OUTLET, \
-        SUBTYPE_TEMP, SUBTYPE_HUMID, SUBTYPE_COUNTER, \
-        SUBTYPE_PRESSURE, SUBTYPE_SPEED, SUBTYPE_DIR, \
-        SUBTYPE_PH,SUBTYPE_WETNESS, SUBTYPE_HUB, SUBTYPE_LUX, \
-        SUBTYPE_VOLTAGE, SUBTYPE_WATTSEC, SUBTYPE_WATT,SUBTYPE_AMPS, \
-        SUBTYPE_RAINRATE, SUBTYPE_WEATHER,SUBTYPE_ALARMSTATUS, \
-        SUBTYPE_NUMBER, SUBTYPE_PERCENTAGE, SUBTYPE_FLOWRATE, \
-        SUBTYPE_DISTANCE, SUBTYPE_VOLUME, SUBTYPE_TIMER, \
-        SUBTYPE_THMODE,SUBTYPE_THSTATE, SUBTYPE_SMNUMBER, \
-        SUBTYPE_BLIND, SUBTYPE_COLLECTOR, SUBTYPE_TRIGGER, \
-        SUBTYPE_ORP, SUBTYPE_SALINITY, SUBTYPE_DAYLIGHT, \
-        SUBTYPE_MOONPH, SUBTYPE_TRISTATE, *_ = range(0, 100)
-
-class TSCALE:
-    TSCALE_F, TSCALE_C, TSCALE_K, TSCALE_R, *_ = range(0, 100)
-
-class BAROSCALE:
-    BAROSCALE_IN, BAROSCALE_MM, BAROSCALE_MB, BAROSCALE_CB, *_ = range(0, 100)
+# Todo:
+# Config file writing
+# This module currently only supports bare sensors, no mod/chg support yet
 
 class gnhast:
     def __init__(self, cfgfile):
         self.cfg = cfgfile
         self.loop = asyncio.get_event_loop()
         self.devices = []
-        self.devtype = DEVTYPE()
-        self.subtype = SUBTYPE()
-        self.tscale= TSCALE()
-        self.baroscale = BAROSCALE()
         self.arg_by_subt = [ "none", "switch", "switch", "temp", "humid",
                              "count", "pres", "speed", "dir", "ph", "wet",
                              "hub", "lux", "volts", "wsec", "watt", "amps",
@@ -80,7 +51,7 @@ class gnhast:
             'timer', 'thmode', 'thstate', 'smnumber', 'blind',
             'collector', 'trigger', 'orp', 'salinity', 'daylight',
             'moonph', 'tristate', 'bool' ]
-        self.cf_tscale = ['F', 'C', 'K', 'R']
+        self.cf_tscale = ['f', 'c', 'k', 'r']
         self.cf_speedscale = ['mph', 'ms', 'kph', 'knots']
         self.cf_lengthscale = ['in', 'mm']
         self.cf_baroscale = ['in', 'mm', 'mb', 'cb']
@@ -101,7 +72,11 @@ class gnhast:
         """
         if isinstance(value, int):
             return value
-        return ptype.index(value)
+        try:
+            nval = ptype.index(value.lower())
+            return -1
+        except:
+            return -1
 
     def dprint(self, thing):
         if self.debug:
@@ -184,33 +159,21 @@ class gnhast:
         """Rescale a temperature
 
         :param temp: current temp
-        :param curscale: current scale
-        :param newscale: new scale
+        :param curscale: current scale (string or int)
+        :param newscale: new scale (string or int)
         :returns: temperature in new scale
         :rtype: float
 
         """
         ureg = UnitRegistry()
+        scaler = [ ureg.degF, ureg.degC, ureg.kelvin, ureg.degR ]
+        scaler_to = [ 'degF',  'degC', 'kelvin', 'degR' ]
         Q_ = ureg.Quantity
+        cur = self.parse_convert_to_int(curscale, self.cf_tscale)
+        new = self.parse_convert_to_int(newscale, self.cf_tscale)
 
-        if curscale == self.tscale.TSCALE_F:
-            temp_s = Q_(temp, ureg.degF)
-        if curscale == self.tscale.TSCALE_C:
-            temp_s = Q_(temp, ureg.degC)
-        if curscale == self.tscale.TSCALE_K:
-            temp_s = Q_(temp, ureg.kelvin)
-        if curscale == self.tscale.TSCALE_R:
-            temp_s = Q_(temp, ureg.degR)
-
-        if newscale == self.tscale.TSCALE_F:
-            return temp_s.to('degF')
-        if newscale == self.tscale.TSCALE_C:
-            return temp_s.to('degC')
-        if newscale == self.tscale.TSCALE_K:
-            return temp_s.to('kelvin')
-        if newscale == self.tscale.TSCALE_R:
-            return temp_s.to('degR')
-        return temp
+        temp_s = Q_(temp, scaler[cur])
+        return temp_s.to(scaler_to[new])
 
     def word_to_dev(self, device, cmdword):
         """Convert a gnhast protocol command word to data and store in device
