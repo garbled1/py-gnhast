@@ -590,7 +590,3 @@ class gnhast:
         await self.gn_connect(self.config['gnhastd']['hostname'], self.config['gnhastd']['port'])
         # send our name
         await self.gn_client_name(client_name)
-
-
-if __name__ == "__main__":
-    gnhast()
