@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+"""
+.. module:: gnhast
+Gnhast
+"""
 
 import asyncio
 from gnhast import confuseparse
@@ -17,6 +21,9 @@ import copy
 
 
 class gnhast:
+    """ The main gnhast class.
+    """
+
     def __init__(self, cfgfile):
         self.cfg = cfgfile
         self.loop = asyncio.get_event_loop()
@@ -75,13 +82,69 @@ class gnhast:
             return value
         try:
             nval = ptype.index(value.lower())
-            return -1
+            return nval
         except ValueError:
             return -1
 
     def dprint(self, thing):
         if self.debug:
             print('DEBUG: ' + thing)
+
+    def print_convert(self, key, val, outfile):
+        if key == 'type':
+            print('  ' + key + ' = ' + self.cf_type[val], file=outfile)
+        elif key == 'subtype':
+            print('  ' + key + ' = ' + self.cf_subt[val], file=outfile)
+        elif key == 'tscale':
+            print('  ' + key + ' = ' + self.cf_tscale[val], file=outfile)
+        elif key == 'speedscale':
+            print('  ' + key + ' = ' + self.cf_speedscale[val], file=outfile)
+        elif key == 'lengthscale':
+            print('  ' + key + ' = ' + self.cf_lengthscale[val], file=outfile)
+        elif key == 'baroscale':
+            print('  ' + key + ' = ' + self.cf_baroscale[val], file=outfile)
+        elif key == 'lightscale':
+            print('  ' + key + ' = ' + self.cf_lightscale[val], file=outfile)
+        elif key == 'salinescale':
+            print('  ' + key + ' = ' + self.cf_salinescale[val], file=outfile)
+        elif isinstance(val, str):
+            print('  ' + key + ' = ' + '"' + val + '"', file=outfile)
+        else:
+            print('  ' + key + ' = ' + str(val), file=outfile)
+
+    def write_conf_file(self, conffile):
+        """Write out a config file
+
+        :param conffile: full path to config file to create
+        :returns: None
+        :rtype: None
+
+        """
+        if conffile == '':
+            return
+        f = open(conffile, 'w')
+
+        for toplvl in self.config:
+            if toplvl == 'devices':
+                for dev in self.config[toplvl]:
+                    print('device "' + self.config['devices'][dev]['uid'] + '" {', file=f)
+                    for val in self.config['devices'][dev]:
+                        self.print_convert(val, self.config['devices'][dev][val], f)
+                    print('}', file=f)
+            elif isinstance(self.config[toplvl], dict):
+                print(toplvl + ' {', file=f)
+                for part in self.config[toplvl]:
+                    if isinstance(self.config[toplvl][part], str):
+                        print('  ' + part + ' = "' + self.config[toplvl][part] + '"', file=f)
+                    else:
+                        print('  ' + part + ' = ' + str(self.config[toplvl][part]), file=f)
+                print('}', file=f)
+            else:
+                if isinstance(self.config[toplvl], str):
+                    print(toplvl + ' = "' + self.config[toplvl] + '"', file=f)
+                else:
+                    print(toplvl + ' = ' + str(self.config[toplvl]), file=f)
+        f.close()
 
     def new_device(self, uid, name, type, subtype):
         """Create a new device and insert it to the device table
@@ -325,6 +388,33 @@ class gnhast:
         self.writer.write(cmd.encode())
         await self.writer.drain()
 
+    async def gn_change_device(self, dev, newdata):
+        """Ask gnhastd to change data about a device
+
+        This is used for example to change a switch's state to on. Gnhastd
+        will take your request, and pass it along to the appropriate
+        collector which will then modify the state of the device to match
+        (if possible).  You should wait a reasonable quantity of time
+        (this depends on the actual speed of the device, not gnhastd) and
+        then issue an ask. (or issue a feed first)
+
+        :param dev: device to update
+        :param newdata: value of new data
+        :returns: None
+        :rtype: None
+
+        """
+        if dev['name'] == '' or dev['uid'] == '':
+            return
+        if dev['type'] == 0 or dev['subtype'] == 0:
+            return
+
+        cmd = 'chg uid:{0}" '.format(dev['uid'])
+        cmd += '{0}:{1}\n'.format(self.arg_by_subt[dev['subtype']], dev['data'])
+
+        self.writer.write(cmd.encode())
+        await self.writer.drain()
+
     async def gn_ldevs(self, uid='', type=0, subtype=0):
         """Send an ldevs command to gnhastd, asking for a list of devices
 
@@ -500,3 +590,7 @@ class gnhast:
         await self.gn_connect(self.config['gnhastd']['hostname'], self.config['gnhastd']['port'])
         # send our name
         await self.gn_client_name(client_name)
+
+
+if __name__ == "__main__":
+    gnhast()

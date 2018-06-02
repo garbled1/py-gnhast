@@ -2,9 +2,13 @@
 from gnhast import gnhast
 import signal
 import asyncio
+from pprint import pprint
 
 x = gnhast.gnhast("/usr/src/gnhast/owsrvcoll/test.atlas.conf")
 x.loop.run_until_complete(x.gn_build_client('foo'))
+
+#pprint(x.config)
+x.write_conf_file("foo")
 
 async def fiddle():
     msg = 'ldevs\n'
