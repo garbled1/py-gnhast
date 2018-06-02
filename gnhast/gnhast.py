@@ -325,6 +325,68 @@ class gnhast:
         self.writer.write(cmd.encode())
         await self.writer.drain()
 
+    async def gn_ldevs(self, uid='', type=0, subtype=0):
+        """Send an ldevs command to gnhastd, asking for a list of devices
+
+        :param uid: optional uid qualifier
+        :param type: optional type qualifier
+        :param subtype: optional subtype qualifier
+        :returns: nothing
+        :rtype: None
+
+        """
+        if type == 0 and subtype == 0 and uid == '':
+            return
+
+        cmd = 'ldevs '
+        if type > 0:
+            cmd += 'devt:{0} '.format(type)
+        if subtype > 0:
+            cmd += 'subt:{0} '.format(subtype)
+        if uid != '':
+            cmd += 'subt:"{0}" '.format(uid)
+        cmd += '\n'
+
+        self.writer.write(cmd.encode())
+        await self.writer.drain()
+
+    async def gn_feed_device(self, dev, rate):
+        """Ask gnhastd for a continous feed of updates for a device
+
+        :param dev: device to ask for a feed about
+        :param rate: rate in seconds for feed
+        :returns: None
+        :rtype: None
+
+        """
+        if dev['name'] == '' or dev['uid'] == '':
+            return
+        if dev['type'] == 0 or dev['subtype'] == 0:
+            return
+
+        cmd = 'feed uid:{0} rate:{1}\n'.format(dev['uid'], rate)
+
+        self.writer.write(cmd.encode())
+        await self.writer.drain()
+
+    async def gn_ask_device(self, dev):
+        """Ask gnhastd for current data for this device
+
+        :param dev: device to ask gnhast about
+        :returns:
+        :rtype:
+
+        """
+        if dev['name'] == '' or dev['uid'] == '':
+            return
+        if dev['type'] == 0 or dev['subtype'] == 0:
+            return
+
+        cmd = 'ask uid:{0}\n'.format(dev['uid'])
+
+        self.writer.write(cmd.encode())
+        await self.writer.drain()
+
     async def gn_imalive(self):
         """Send a ping reply
         """
