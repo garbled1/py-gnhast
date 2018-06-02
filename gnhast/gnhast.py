@@ -15,19 +15,20 @@ import copy
 # Config file writing
 # This module currently only supports bare sensors, no mod/chg support yet
 
+
 class gnhast:
     def __init__(self, cfgfile):
         self.cfg = cfgfile
         self.loop = asyncio.get_event_loop()
         self.devices = []
-        self.arg_by_subt = [ "none", "switch", "switch", "temp", "humid",
-                             "count", "pres", "speed", "dir", "ph", "wet",
-                             "hub", "lux", "volts", "wsec", "watt", "amps",
-                             "rain", "weather", "alarm", "number", "pct",
-                             "flow", "distance", "volume", "timer",
-                             "thmode", "thstate", "smnum", "blind",
-                             "collector", "trigger", "orp", "salinity",
-                             "moonph", "tristate" ]
+        self.arg_by_subt = ["none", "switch", "switch", "temp", "humid",
+                            "count", "pres", "speed", "dir", "ph", "wet",
+                            "hub", "lux", "volts", "wsec", "watt", "amps",
+                            "rain", "weather", "alarm", "number", "pct",
+                            "flow", "distance", "volume", "timer",
+                            "thmode", "thstate", "smnum", "blind",
+                            "collector", "trigger", "orp", "salinity",
+                            "moonph", "tristate"]
         self.DEVICE = {
             'uid': '', 'loc': '', 'name': '', 'rrdname': '',
             'proto': 0, 'type': 0, 'subtype': 0,
@@ -50,7 +51,7 @@ class gnhast:
             'percentage', 'flowrate', 'distance', 'volume',
             'timer', 'thmode', 'thstate', 'smnumber', 'blind',
             'collector', 'trigger', 'orp', 'salinity', 'daylight',
-            'moonph', 'tristate', 'bool' ]
+            'moonph', 'tristate', 'bool']
         self.cf_tscale = ['f', 'c', 'k', 'r']
         self.cf_speedscale = ['mph', 'ms', 'kph', 'knots']
         self.cf_lengthscale = ['in', 'mm']
@@ -75,7 +76,7 @@ class gnhast:
         try:
             nval = ptype.index(value.lower())
             return -1
-        except:
+        except ValueError:
             return -1
 
     def dprint(self, thing):
@@ -118,7 +119,7 @@ class gnhast:
         self.config = confuseparse.parse(modcfg)
 
         # Now look for device-* entries and reform them
-        self.config.update({'devices':dict()})
+        self.config.update({'devices': dict()})
         devpat = re.compile("^device-(.*)")
         keylist = []
         for key, value in self.config.items():
@@ -131,19 +132,26 @@ class gnhast:
                 x['proto'] = 0
                 x['type'] = self.parse_convert_to_int(x['type'], self.cf_type)
                 if 'subtype' in x:
-                    x['subtype'] = self.parse_convert_to_int(x['subtype'], self.cf_subt)
+                    x['subtype'] = self.parse_convert_to_int(x['subtype'],
+                                                             self.cf_subt)
                 if 'tscale' in x:
-                    x['tscale'] = self.parse_convert_to_int(x['tscale'], self.cf_tscale)
+                    x['tscale'] = self.parse_convert_to_int(x['tscale'],
+                                                            self.cf_tscale)
                 if 'speedscale' in x:
-                    x['speedscale'] = self.parse_convert_to_int(x['speedscale'], self.cf_speedscale)
+                    x['speedscale'] = self.parse_convert_to_int(x['speedscale'],
+                                                                self.cf_speedscale)
                 if 'lengthscale' in x:
-                    x['lengthscale'] = self.parse_convert_to_int(x['lengthscale'], self.cf_lengthscale)
+                    x['lengthscale'] = self.parse_convert_to_int(x['lengthscale'],
+                                                                 self.cf_lengthscale)
                 if 'baroscale' in x:
-                    x['baroscale'] = self.parse_convert_to_int(x['baroscale'], self.cf_baroscale)
+                    x['baroscale'] = self.parse_convert_to_int(x['baroscale'],
+                                                               self.cf_baroscale)
                 if 'lightscale' in x:
-                    x['lightscale'] = self.parse_convert_to_int(x['lightscale'], self.cf_lightscale)
+                    x['lightscale'] = self.parse_convert_to_int(x['lightscale'],
+                                                                self.cf_lightscale)
                 if 'salinescale' in x:
-                    x['salinescale'] = self.parse_convert_to_int(x['salinescale'], self.cf_salinescale)
+                    x['salinescale'] = self.parse_convert_to_int(x['salinescale'],
+                                                                 self.cf_salinescale)
                 keylist.append(key)
                 # While we are here, append them to the internal devices list
                 self.devices.append(self.config['devices'][m.group(1)])
@@ -166,8 +174,8 @@ class gnhast:
 
         """
         ureg = UnitRegistry()
-        scaler = [ ureg.degF, ureg.degC, ureg.kelvin, ureg.degR ]
-        scaler_to = [ 'degF',  'degC', 'kelvin', 'degR' ]
+        scaler = [ureg.degF, ureg.degC, ureg.kelvin, ureg.degR]
+        scaler_to = ['degF',  'degC', 'kelvin', 'degR']
         Q_ = ureg.Quantity
         cur = self.parse_convert_to_int(curscale, self.cf_tscale)
         new = self.parse_convert_to_int(newscale, self.cf_tscale)
@@ -181,7 +189,7 @@ class gnhast:
         :param device: device to store data in
         :param cmdword: word to parse
         :returns: nothing
-        :rtype: 
+        :rtype:
 
         """
         # take a string like devt:1 and import it to a device
@@ -189,7 +197,7 @@ class gnhast:
         vwords = ['uid', 'name', 'rate', 'rrdname', 'devt', 'proto',
                   'subt', 'client', 'scale', 'handler', 'hargs',
                   'glist', 'dlist', 'collector', 'alsev', 'altext',
-                  'aluid', 'alchan', 'spamhandler' ]
+                  'aluid', 'alchan', 'spamhandler']
 
         if data[0] in self.arg_by_subt:
             data[0] = 'data'
@@ -215,7 +223,7 @@ class gnhast:
 
         :param cmd_word: list of command word pairs
         :returns: nothing
-        :rtype: 
+        :rtype:
 
         """
         if not cmd_word[0] or cmd_word[0] == '':
@@ -248,7 +256,7 @@ class gnhast:
 
         :param cmd_word: list of command word pairs
         :returns: nothing
-        :rtype: 
+        :rtype:
 
         """
         if not cmd_word[0] or cmd_word[0] == '':
@@ -266,17 +274,17 @@ class gnhast:
 
         if dev is None:
             return
-        
+
         for word in cmd_word[1:]:
             self.word_to_dev(dev, word)
         self.dprint("Updated device: {0}".format(dev['name']))
-        
+
     async def gn_register_device(self, dev):
         """Register a new device with gnhast
 
         :param dev: device to register
         :returns: nothing
-        :rtype: 
+        :rtype:
 
         """
         if dev['name'] == '' or dev['uid'] == '':
@@ -297,8 +305,8 @@ class gnhast:
         """Update the data for a device with gnhast
 
         :param dev: device to update
-        :returns: 
-        :rtype: 
+        :returns:
+        :rtype:
 
         """
         if dev['name'] == '' or dev['uid'] == '':
@@ -313,7 +321,7 @@ class gnhast:
             cmd += 'scale:{0} '.format(dev['scale'])
         cmd += 'devt:{0} subt:{1} proto:1 '.format(dev['type'], dev['subtype'])
         cmd += '{0}:{1}\n'.format(self.arg_by_subt[dev['subtype']], dev['data'])
-        
+
         self.writer.write(cmd.encode())
         await self.writer.drain()
 
@@ -332,12 +340,12 @@ class gnhast:
             self.dprint("I am ok")
         else:
             print("WARNING: Collector is non-functional")
-        
+
     async def gn_disconnect(self):
         """Send a disconnect command to gnhastd
 
-        :returns: 
-        :rtype: 
+        :returns:
+        :rtype:
 
         """
         self.writer.write("disconnect\n".encode())
@@ -347,8 +355,8 @@ class gnhast:
         """Send our client name to gnhastd
 
         :param name: the name of our collector
-        :returns: 
-        :rtype: 
+        :returns:
+        :rtype:
 
         """
         send = "client client:{0}\n".format(name)
@@ -361,7 +369,7 @@ class gnhast:
         :param sig: Signal we recieved
         :param loop: the asyncio loop
         :returns: nothing
-        :rtype: 
+        :rtype:
 
         """
         self.dprint('caught {0}'.format(sig.name))
@@ -379,7 +387,7 @@ class gnhast:
         :param host: gnhastd host (default 127.0.0.1)
         :param port: gnhastd port (default 2920)
         :returns: the gnhastd object
-        :rtype: 
+        :rtype:
 
         """
         self.reader, self.writer = await asyncio.open_connection(host, port, loop=self.loop)
@@ -388,8 +396,8 @@ class gnhast:
     async def gnhastd_listener(self):
         """Listen to gnhastd for commands and info
 
-        :returns: 
-        :rtype: 
+        :returns:
+        :rtype:
 
         """
         valid_data = True
@@ -401,7 +409,7 @@ class gnhast:
             if command != '':
                 self.dprint('Got command: {0}'.format(command.rstrip()))
                 cmd_words = shlex.split(command.rstrip())
-                #pprint(cmd_words)
+                # pprint(cmd_words)
                 if not cmd_words[0] or cmd_words[0] == '':
                     print("WARNING: Ignoring garbage command")
                     continue
@@ -415,13 +423,13 @@ class gnhast:
                     await self.collector_healthcheck()
                 else:
                     print('WARNING: Unhandled command')
-                    
+
     async def gn_build_client(self, client_name):
         """Build a new client for gnhastd
 
         :param client_name: our client name
-        :returns: 
-        :rtype: 
+        :returns:
+        :rtype:
 
         """
         # read our config file

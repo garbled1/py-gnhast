@@ -50,10 +50,12 @@ def t_INTEGER(t):
     t.value = int(t.value)
     return t
 
+
 def t_FLOAT(t):
     r'[0-9]?\.[0-9]*'
     t.value = float(t.value)
     return t
+
 
 def t_STRING(t):
     r'"([^"]|\\")*"'
@@ -129,8 +131,7 @@ def p_key(p):
     if p[1] == 'device':
         p[0] = p[1] + '-' + p[2]
     else:
-        p[0] = p[1]# + (p[2],)
-    #print('multi:' + p[1] + p[2])
+        p[0] = p[1]
 
 
 def p_entry(p):
