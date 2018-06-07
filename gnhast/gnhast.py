@@ -24,9 +24,10 @@ class gnhast:
     """ The main gnhast class.
     """
 
-    def __init__(self, cfgfile):
+    def __init__(self, loop, cfgfile):
         self.cfg = cfgfile
-        self.loop = asyncio.get_event_loop()
+        # self.loop = asyncio.get_event_loop()
+        self.loop = loop
         self.devices = []
         self.arg_by_subt = ["none", "switch", "switch", "temp", "humid",
                             "count", "pres", "speed", "dir", "ph", "wet",
@@ -42,7 +43,7 @@ class gnhast:
             'scale': 0,
             'data': 0, 'last': 0, 'min': 0, 'max': 0, 'avg': 0,
             'lowat': 0, 'hiwat': 0, 'change': 0,
-            'handler': 0, 'hargs': 0,
+            'handler': 0, 'hargs': dict(),
             'localdata': None,
             'lastupd': 0,
             'spamhandler': 0
@@ -68,6 +69,8 @@ class gnhast:
 
         self.collector_healthy = True
         self.debug = False
+        self.writer = None
+        self.reader = None
 
     def parse_convert_to_int(self, value, ptype):
         """Convert a parsed string to it's correct type
@@ -124,12 +127,19 @@ class gnhast:
             return
         f = open(conffile, 'w')
 
+        # overwrite our config data with current data
+        for dev in self.devices:
+            self.config['devices'][dev['uid']] = dev
+
         for toplvl in self.config:
             if toplvl == 'devices':
                 for dev in self.config[toplvl]:
                     print('device "' + self.config['devices'][dev]['uid'] + '" {', file=f)
                     for val in self.config['devices'][dev]:
-                        self.print_convert(val, self.config['devices'][dev][val], f)
+                        if val != 'data' and val != 'avg' and val != 'min' \
+                           and val != 'max' and val != 'lastupd' \
+                           and val != 'last' and val != 'change':
+                            self.print_convert(val, self.config['devices'][dev][val], f)
                     print('}', file=f)
             elif isinstance(self.config[toplvl], dict):
                 print(toplvl + ' {', file=f)
@@ -159,9 +169,9 @@ class gnhast:
         """
         dev = copy.deepcopy(self.DEVICE)
         dev['name'] = name
-        dev['devt'] = type
+        dev['type'] = type
         dev['uid'] = uid
-        dev['subt'] = subtype
+        dev['subtype'] = subtype
         self.devices.append(dev)
         return dev
 
@@ -179,7 +189,11 @@ class gnhast:
                 if not x.endswith('{') and not x == '':
                     x += ';'
                 modcfg += x + '\n'
-        self.config = confuseparse.parse(modcfg)
+        try:
+            self.config = confuseparse.parse(modcfg)
+        except Exception as error:
+            print('ERROR: {0}'.format(error))
+            exit(1)
 
         # Now look for device-* entries and reform them
         self.config.update({'devices': dict()})
@@ -362,7 +376,7 @@ class gnhast:
             cmd += 'scale:{0} '.format(dev['scale'])
         cmd += 'devt:{0} subt:{1} proto:1\n'.format(dev['type'], dev['subtype'])
         self.writer.write(cmd.encode())
-        await writer.drain()
+        await self.writer.drain()
 
     async def gn_update_device(self, dev):
         """Update the data for a device with gnhast
@@ -480,6 +494,7 @@ class gnhast:
     async def gn_imalive(self):
         """Send a ping reply
         """
+        self.dprint("PING REPLY")
         cmd = "imalive\n"
         self.writer.write(cmd.encode())
         await self.writer.drain()
@@ -500,8 +515,9 @@ class gnhast:
         :rtype:
 
         """
-        self.writer.write("disconnect\n".encode())
-        await self.writer.drain()
+        if self.writer is not None:
+            self.writer.write("disconnect\n".encode())
+            await self.writer.drain()
 
     async def gn_client_name(self, name):
         """Send our client name to gnhastd
@@ -533,6 +549,17 @@ class gnhast:
         self.dprint('finished awaiting cancelled tasks, results: {0}'.format(results))
         loop.stop()
 
+    async def abort(self):
+        """Abort the collector hard
+
+        :returns: None
+        :rtype: None
+
+        """
+        print("ERROR: Aborting collector")
+        await self.shutdown(signal.SIGTERM, self.loop)
+        exit(1)
+
     async def gn_connect(self, host='127.0.0.1', port=2920):
         """Create a new connection to gnhastd server
 
@@ -542,8 +569,12 @@ class gnhast:
         :rtype:
 
         """
-        self.reader, self.writer = await asyncio.open_connection(host, port, loop=self.loop)
-        return self
+        try:
+            self.reader, self.writer = await asyncio.open_connection(host, port, loop=self.loop)
+            return self
+        except (asyncio.TimeoutError, ConnectionRefusedError):
+            print("ERROR: Cannot connect to gnhastd {0}:{1}".format(host, str(port)))
+            raise ConnectionError('Connection to gnhastd Failed')
 
     async def gnhastd_listener(self):
         """Listen to gnhastd for commands and info
@@ -587,6 +618,9 @@ class gnhast:
         # read our config file
         self.parse_cfg()
         # open a connection to gnhastd
-        await self.gn_connect(self.config['gnhastd']['hostname'], self.config['gnhastd']['port'])
-        # send our name
-        await self.gn_client_name(client_name)
+        try:
+            await self.gn_connect(self.config['gnhastd']['hostname'], self.config['gnhastd']['port'])
+            # send our name
+            await self.gn_client_name(client_name)
+        except ConnectionError:
+            await self.abort()

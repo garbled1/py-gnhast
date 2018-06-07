@@ -16,7 +16,7 @@ tokens = (
 
 t_ignore = ' \t='
 # Added ! for support of allow-query { !key external; };
-t_NAME = r'[a-zA-Z!][a-zA-Z0-9-]*[a-zA-Z0-9]*'
+t_NAME = r'[a-zA-Z!][a-zA-Z0-9-_]*[a-zA-Z0-9]*'
 t_IPADDR = r'([0-2]?[0-9]?[0-9][.]){3}[0-2]?[0-9]?[0-9]'
 t_DOMAIN = r'([a-z][a-z0-9-]*[.])+[a-z][a-z0-9-]*[.]?'
 t_BRACE_OPEN = r'{'
