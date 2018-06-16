@@ -7,10 +7,10 @@ protocol.
 
 # Things that are missing:
 
-mod - Cannot handle a request to modify a device
-chg - Cannot handle a request to change a device
-alarms - No alarm support (yet)
-groups - No device group support.
+* mod - Cannot handle a request to modify a device
+* chg - Cannot handle a request to change a device
+* alarms - No alarm support (yet)
+* groups - No device group support.
 
 # Things that work
 * Easy to write sensor collectors.
