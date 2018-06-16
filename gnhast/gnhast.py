@@ -8,16 +8,22 @@ import asyncio
 from gnhast import confuseparse
 from pprint import pprint
 import time
+from datetime import datetime
 from pint import UnitRegistry
 import shlex
 import functools
 import signal
 import re
 import copy
+import sys
 
 # Todo:
-# Config file writing
 # This module currently only supports bare sensors, no mod/chg support yet
+
+LOG_INFO = 0
+LOG_ERROR = 1
+LOG_WARNING = 2
+LOG_DEBUG = 3
 
 
 class gnhast:
@@ -71,6 +77,7 @@ class gnhast:
         self.debug = False
         self.writer = None
         self.reader = None
+        self.log = sys.stderr
 
     def parse_convert_to_int(self, value, ptype):
         """Convert a parsed string to it's correct type
@@ -88,10 +95,6 @@ class gnhast:
             return nval
         except ValueError:
             return -1
-
-    def dprint(self, thing):
-        if self.debug:
-            print('DEBUG: ' + thing)
 
     def print_convert(self, key, val, outfile):
         if key == 'type':
@@ -192,7 +195,7 @@ class gnhast:
         try:
             self.config = confuseparse.parse(modcfg)
         except Exception as error:
-            print('ERROR: {0}'.format(error))
+            self.LOG_ERROR('{0}'.format(error))
             exit(1)
 
         # Now look for device-* entries and reform them
@@ -236,8 +239,8 @@ class gnhast:
         for key in keylist:
             del self.config[key]
 
-        if self.debug:
-            pprint(self.config)
+        # if self.debug:
+        #     pprint(self.config)
         return self.config
 
     def gn_scale_temp(self, temp, curscale, newscale):
@@ -280,7 +283,7 @@ class gnhast:
             data[0] = 'data'
 
         if data[0] not in vwords:
-            self.dprint("Unhandled word: {0}".format(data[0]))
+            self.LOG_WARNING("Unhandled word: {0}".format(data[0]))
             return
 
         # Patch the words up a little
@@ -313,7 +316,7 @@ class gnhast:
         for word in cmd_word[1:]:
             self.word_to_dev(dev, word)
         self.devices.append(dev)
-        self.dprint("Added device: {0}".format(dev['name']))
+        self.LOG_DEBUG("Added device: {0}".format(dev['name']))
 
     def find_dev_byuid(self, uid):
         """Simple search for a device entry by uid
@@ -354,7 +357,7 @@ class gnhast:
 
         for word in cmd_word[1:]:
             self.word_to_dev(dev, word)
-        self.dprint("Updated device: {0}".format(dev['name']))
+        self.LOG_DEBUG("Updated device: {0}".format(dev['name']))
 
     async def gn_register_device(self, dev):
         """Register a new device with gnhast
@@ -494,7 +497,7 @@ class gnhast:
     async def gn_imalive(self):
         """Send a ping reply
         """
-        self.dprint("PING REPLY")
+        self.LOG_DEBUG("PING REPLY")
         cmd = "imalive\n"
         self.writer.write(cmd.encode())
         await self.writer.drain()
@@ -504,9 +507,9 @@ class gnhast:
         """
         if self.collector_healthy:
             await self.gn_imalive()
-            self.dprint("I am ok")
+            self.LOG_DEBUG("I am ok")
         else:
-            print("WARNING: Collector is non-functional")
+            self.LOG_WARNING("Collector is non-functional")
 
     async def gn_disconnect(self):
         """Send a disconnect command to gnhastd
@@ -540,13 +543,13 @@ class gnhast:
         :rtype:
 
         """
-        self.dprint('caught {0}'.format(sig.name))
+        self.LOG_DEBUG('caught {0}'.format(sig.name))
         await self.gn_disconnect()
         tasks = [task for task in asyncio.Task.all_tasks() if task is not
                  asyncio.tasks.Task.current_task()]
         list(map(lambda task: task.cancel(), tasks))
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        self.dprint('finished awaiting cancelled tasks, results: {0}'.format(results))
+        self.LOG_DEBUG('finished awaiting cancelled tasks, results: {0}'.format(results))
         loop.stop()
 
     async def abort(self):
@@ -556,7 +559,7 @@ class gnhast:
         :rtype: None
 
         """
-        print("ERROR: Aborting collector")
+        self.LOG_ERROR("Aborting collector")
         await self.shutdown(signal.SIGTERM, self.loop)
         exit(1)
 
@@ -573,7 +576,7 @@ class gnhast:
             self.reader, self.writer = await asyncio.open_connection(host, port, loop=self.loop)
             return self
         except (asyncio.TimeoutError, ConnectionRefusedError):
-            print("ERROR: Cannot connect to gnhastd {0}:{1}".format(host, str(port)))
+            self.LOG_ERROR("Cannot connect to gnhastd {0}:{1}".format(host, str(port)))
             raise ConnectionError('Connection to gnhastd Failed')
 
     async def gnhastd_listener(self):
@@ -590,22 +593,22 @@ class gnhast:
                 valid_data = False
             command = data.decode()
             if command != '':
-                self.dprint('Got command: {0}'.format(command.rstrip()))
+                self.LOG_DEBUG('Got command: {0}'.format(command.rstrip()))
                 cmd_words = shlex.split(command.rstrip())
                 # pprint(cmd_words)
                 if not cmd_words[0] or cmd_words[0] == '':
-                    print("WARNING: Ignoring garbage command")
+                    self.LOG_WARNING("Ignoring garbage command")
                     continue
                 if cmd_words[0] == 'reg':
                     self.command_reg(cmd_words)
                 elif cmd_words[0] == 'upd':
                     self.command_upd(cmd_words)
                 elif cmd_words[0] == 'endldevs':
-                    self.dprint('Ignored endldevs')
+                    self.LOG_DEBUG('Ignored endldevs')
                 elif cmd_words[0] == 'ping':
                     await self.collector_healthcheck()
                 else:
-                    print('WARNING: Unhandled command')
+                    self.LOG_WARNING('Unhandled command')
 
     async def gn_build_client(self, client_name):
         """Build a new client for gnhastd
@@ -617,6 +620,7 @@ class gnhast:
         """
         # read our config file
         self.parse_cfg()
+        self.log_open()
         # open a connection to gnhastd
         try:
             await self.gn_connect(self.config['gnhastd']['hostname'], self.config['gnhastd']['port'])
@@ -624,3 +628,43 @@ class gnhast:
             await self.gn_client_name(client_name)
         except ConnectionError:
             await self.abort()
+
+    def log_open(self):
+        """Open the logfile for writing
+
+        :returns: logfile
+        :rtype: file descriptor
+
+        """
+        try:
+            if self.config['logfile']:
+                try:
+                    self.log = open(self.config['logfile'], 'a')
+                except Exception as e:
+                    self.log = sys.stderr
+                    self.LOG_ERROR('cannot open log: {0}'.format(str(e)))
+            else:
+                self.log = sys.stderr
+        except KeyError:
+            self.log = sys.stderr
+
+    def LOG(self, msg, mode=LOG_INFO):
+        if mode == LOG_INFO:
+            ls = '{0} [INFO]:'.format(datetime.now().ctime())
+        elif mode == LOG_ERROR:
+            ls = '{0} [ERROR]:'.format(datetime.now().ctime())
+        elif mode == LOG_WARNING:
+            ls = '{0} [WARNING]:'.format(datetime.now().ctime())
+        elif mode == LOG_DEBUG:
+            ls = '{0} [DEBUG]:'.format(datetime.now().ctime())
+        print(ls + msg, file=self.log)
+
+    def LOG_DEBUG(self, msg):
+        if self.debug:
+            self.LOG(msg, mode=LOG_DEBUG)
+
+    def LOG_ERROR(self, msg):
+        self.LOG(msg, mode=LOG_ERROR)
+
+    def LOG_WARNING(self, msg):
+        self.LOG(msg, mode=LOG_WARNING)
