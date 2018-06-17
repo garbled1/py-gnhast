@@ -111,6 +111,7 @@ class gnhast:
             'altext': ''
         }
         self.coll_alarm_cb = None
+        self.coll_upd_cb = None
 
     def parse_convert_to_int(self, value, ptype):
         """Convert a parsed string to it's correct type
@@ -391,6 +392,7 @@ class gnhast:
         for word in cmd_word[1:]:
             self.word_to_dev(dev, word)
         self.LOG_DEBUG("Updated device: {0}".format(dev['name']))
+        self.int_coll_upd_cb(dev)
 
     def find_alarm_byuid(self, aluid):
         """Simple search for an alarm entry by uid
@@ -405,11 +407,24 @@ class gnhast:
                 return alarm
         return None
 
+    def int_coll_upd_cb(self, dev):
+        """Internal device update callback
+
+        Binds to self.coll_upd_cb
+
+        :param dev: the device that was updated
+        """
+
+        if self.coll_upd_cb is None:
+            return
+        else:
+            self.coll_upd_cb(dev)
+    
     def int_coll_alarm_cb(self, alarm):
         """Internal callback for alarm
 
-        attempts to call a function named "coll_alarm_cb", if it is not
-        found, ignores the problem.
+        You can bind a function to self.coll_alarm_cb and it will be called
+        on all alarm updates.
 
         :param alarm: the alarm that we got called for
         """
@@ -451,6 +466,7 @@ class gnhast:
             alarm = copy.deepcopy(self.ALARM)
         elif alarm is None and my_sev == 0:
             # clearing event for alarm we don't have
+            self.LOG_DEBUG('Clearing event for alarm we do not have')
             return
 
         # now update the internal alarm
@@ -460,8 +476,12 @@ class gnhast:
 
         # oops, we got a clearing event, delete the alarm
         if alarm['alsev'] == 0:
+            self.LOG_DEBUG('Deleting alarm {0}'.format(alarm['aluid']))
             del self.alarms[alarm]
+        else:
+            self.alarms.append(alarm)
 
+        # Call the internal callback for this alarm
         self.int_coll_alarm_cb(alarm)
 
     async def gn_register_device(self, dev):
