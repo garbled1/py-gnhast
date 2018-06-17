@@ -10,6 +10,7 @@ from pprint import pprint
 import time
 from datetime import datetime
 from pint import UnitRegistry
+from flags import Flags
 import shlex
 import functools
 import signal
@@ -26,6 +27,29 @@ LOG_WARNING = 2
 LOG_DEBUG = 3
 
 
+class AlarmChan(Flags):
+    Generic = 1
+    Power = 2
+    Lights = 4
+    Security = 8
+    Weather = 16
+    AC = 32
+    Yard = 64
+    Gnhast = 128
+    System = 256
+    Emergency = 512
+    Messaging = 1024
+    User1 = 16777216
+    User2 = 33554432
+    User3 = 67108864
+    User4 = 134217728
+    User5 = 268435456
+    User6 = 536870912
+    User7 = 1073741824
+    User8 = 2147483648
+    ALL = -1
+
+
 class gnhast:
     """ The main gnhast class.
     """
@@ -35,6 +59,7 @@ class gnhast:
         # self.loop = asyncio.get_event_loop()
         self.loop = loop
         self.devices = []
+        self.alarms = []
         self.arg_by_subt = ["none", "switch", "switch", "temp", "humid",
                             "count", "pres", "speed", "dir", "ph", "wet",
                             "hub", "lux", "volts", "wsec", "watt", "amps",
@@ -78,6 +103,14 @@ class gnhast:
         self.writer = None
         self.reader = None
         self.log = sys.stderr
+
+        self.ALARM = {
+            'aluid': '',
+            'alsev': 0,
+            'alchan': AlarmChan.Generic,
+            'altext': ''
+        }
+        self.coll_alarm_cb = None
 
     def parse_convert_to_int(self, value, ptype):
         """Convert a parsed string to it's correct type
@@ -350,7 +383,7 @@ class gnhast:
             parts = word.split(':')
             if parts[0] != 'uid':
                 continue
-            dev = self.find_dev_byuid(uid)
+            dev = self.find_dev_byuid(parts[1])
 
         if dev is None:
             return
@@ -358,6 +391,78 @@ class gnhast:
         for word in cmd_word[1:]:
             self.word_to_dev(dev, word)
         self.LOG_DEBUG("Updated device: {0}".format(dev['name']))
+
+    def find_alarm_byuid(self, aluid):
+        """Simple search for an alarm entry by uid
+
+        :param aluid: aluid to search for
+        :returns: device dict or None
+        :rtype: dict
+
+        """
+        for alarm in self.alarms:
+            if aluid == alarm['aluid']:
+                return alarm
+        return None
+
+    def int_coll_alarm_cb(self, alarm):
+        """Internal callback for alarm
+
+        attempts to call a function named "coll_alarm_cb", if it is not
+        found, ignores the problem.
+
+        :param alarm: the alarm that we got called for
+        """
+
+        if self.coll_alarm_cb is None:
+            return
+        else:
+            self.coll_alarm_cb(alarm)
+
+    async def command_setalarm(self, cmd_word):
+        """Handle an alarm set command from the server
+
+        :param cmd_word: list of command word pairs
+        """
+        if not cmd_word[0] or cmd_word[0] == '':
+            return
+
+        if cmd_word[0] != 'setalarm':
+            return
+
+        alarm = None
+
+        # find the aluid
+        for word in cmd_word[1:]:
+            parts = word.split(':')
+            if parts[0] != 'aluid':
+                continue
+            alarm = self.find_alarm_byuid(parts[1])
+
+        # loop again and find the sev
+        for word in cmd_word[1:]:
+            parts = word.split(':')
+            if parts[0] != 'alsev':
+                continue
+            my_sev = int(parts[1])
+
+        if alarm is None and my_sev > 0:
+            # we got a new alarm
+            alarm = copy.deepcopy(self.ALARM)
+        elif alarm is None and my_sev == 0:
+            # clearing event for alarm we don't have
+            return
+
+        # now update the internal alarm
+        for word in cmd_word[1:]:
+            parts = word.split(':')
+            alarm[parts[0]] = parts[1]
+
+        # oops, we got a clearing event, delete the alarm
+        if alarm['alsev'] == 0:
+            del self.alarms[alarm]
+
+        self.int_coll_alarm_cb(alarm)
 
     async def gn_register_device(self, dev):
         """Register a new device with gnhast
@@ -474,6 +579,67 @@ class gnhast:
         cmd = 'feed uid:{0} rate:{1}\n'.format(dev['uid'], rate)
 
         self.writer.write(cmd.encode())
+        await self.writer.drain()
+
+    async def gn_setalarm(self, aluid, altext, alsev, alchan):
+        """Set or modify an alarm in gnhast
+
+        use an alsev of 0 to unset an alarm
+
+        :param aluid: unique ID of alarm
+        :param altext: Text of alarm
+        :param alsev: severity of alarm
+        :param alchan: alarm channel bitflag
+        """
+
+        if altext is None:
+            cmd = 'setalarm aluid:{0} alsev:{1} alchan:{2}\n' \
+                  .format(aluid, alsev, int(alchan))
+        else:
+            cmd = 'setalarm aluid:{0} altext:"{1}" alsev:{2} alchan:{3}\n' \
+                  .format(aluid, altext, alsev, int(alchan))
+
+        self.writer.write(cmd.encode())
+        await self.writer.drain()
+
+    async def gn_listenalarms(self, alsev, alchan):
+        """Tell gnhastd we want to listen to a set of alarms
+
+        :param alsev: minimum severity of alarm to listen to (0 is ok)
+        :param alchan: channel to listen. use AlarmChan.ALL to listen to all
+        """
+        cmd = 'listenalarms alchan:{0} alsev:{1}\n' \
+              .format(int(alchan), alsev)
+        self.writer.write(cmd.encode())
+        await self.writer.drain()
+
+    async def gn_dumpalarms(self, alsev=1, alchan=AlarmChan.ALL, aluid=None):
+        """Ask gnhastd to dump all current alarms to us
+
+        :param alsev: minimum severity (default 1)
+        :param alchan: channel to dump (default ALL)
+        :param aluid: alarm uid to dump (default any)
+        """
+
+        cmd = 'dumpalarms '
+        if alsev != 1:
+            cmd += 'alsev:{0} '.format(alsev)
+        if alchan != AlarmChan.ALL:
+            cmd += 'alchan:{0} '.format(int(alchan))
+        if aluid is not None:
+            cmd += 'aluid:{0} '.format(aluid)
+        cmd += '\n'
+        self.writer.write(cmd.encode())
+        await self.writer.drain()
+
+    async def gn_rawcmd(self, cmd):
+        """Send a raw dirty command to gnhast.  Appends the \n
+
+        :param cmd: the text string to send
+        """
+
+        csend = cmd + '\n'
+        self.writer.write(csend.encode())
         await self.writer.drain()
 
     async def gn_ask_device(self, dev):
@@ -607,6 +773,8 @@ class gnhast:
                     self.LOG_DEBUG('Ignored endldevs')
                 elif cmd_words[0] == 'ping':
                     await self.collector_healthcheck()
+                elif cmd_words[0] == 'setalarm':
+                    await self.command_setalarm(cmd_words)
                 else:
                     self.LOG_WARNING('Unhandled command')
 

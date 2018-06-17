@@ -9,12 +9,12 @@ protocol.
 
 * mod - Cannot handle a request to modify a device
 * chg - Cannot handle a request to change a device
-* alarms - No alarm support (yet)
 * groups - No device group support.
 
 # Things that work
 * Easy to write sensor collectors.
 * Easy to write simple automation controls, for example, listen to a sensor, and then issue a command to gnhastd when something happens on that sensor.
+* alarms and alarm callbacks
 
 # Examples
 * See the https://github.com/garbled1/gnhast-python-collectors repo for collectors written using this module.

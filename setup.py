@@ -8,7 +8,7 @@ with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='gnhast',
-    version='0.1.1',
+    version='0.1.3',
     description='Minimal code to create a gnhast collector',
     license='GPL',
     packages=['gnhast'],
@@ -25,7 +25,8 @@ setup(
     },
     install_requires=[
         'pint',
-        'ply'
+        'ply',
+        'py-flags'
     ],
     python_requires='>=3.5',
     long_description=long_description,
