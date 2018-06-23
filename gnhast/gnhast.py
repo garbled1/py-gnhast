@@ -112,6 +112,7 @@ class gnhast:
         }
         self.coll_alarm_cb = None
         self.coll_upd_cb = None
+        self.coll_reg_cb = None
 
     def parse_convert_to_int(self, value, ptype):
         """Convert a parsed string to it's correct type
@@ -297,6 +298,21 @@ class gnhast:
         temp_s = Q_(temp, scaler[cur])
         return temp_s.to(scaler_to[new])
 
+    def typeofvalue(self, text):
+        try:
+            int(text)
+            return int(text)
+        except ValueError:
+            pass
+
+        try:
+            float(text)
+            return float(text)
+        except ValueError:
+            pass
+
+        return str(text)
+
     def word_to_dev(self, device, cmdword):
         """Convert a gnhast protocol command word to data and store in device
 
@@ -311,7 +327,7 @@ class gnhast:
         vwords = ['uid', 'name', 'rate', 'rrdname', 'devt', 'proto',
                   'subt', 'client', 'scale', 'handler', 'hargs',
                   'glist', 'dlist', 'collector', 'alsev', 'altext',
-                  'aluid', 'alchan', 'spamhandler']
+                  'aluid', 'alchan', 'spamhandler', 'data']
 
         if data[0] in self.arg_by_subt:
             data[0] = 'data'
@@ -330,9 +346,9 @@ class gnhast:
         if data[0] == 'data':
             device['last'] = device['data']
 
-        device[data[0]] = data[1]
+        device[data[0]] = self.typeofvalue(data[1])
 
-    def command_reg(self, cmd_word):
+    async def command_reg(self, cmd_word):
         """Handle a reg command
 
         :param cmd_word: list of command word pairs
@@ -351,6 +367,7 @@ class gnhast:
             self.word_to_dev(dev, word)
         self.devices.append(dev)
         self.LOG_DEBUG("Added device: {0}".format(dev['name']))
+        await self.int_coll_reg_cb(dev)
 
     def find_dev_byuid(self, uid):
         """Simple search for a device entry by uid
@@ -365,7 +382,7 @@ class gnhast:
                 return dev
         return None
 
-    def command_upd(self, cmd_word):
+    async def command_upd(self, cmd_word):
         """Handle an update command (upd)
 
         :param cmd_word: list of command word pairs
@@ -391,8 +408,10 @@ class gnhast:
 
         for word in cmd_word[1:]:
             self.word_to_dev(dev, word)
+        cur_time = int(time.time())
+        dev['lastupd'] = cur_time
         self.LOG_DEBUG("Updated device: {0}".format(dev['name']))
-        self.int_coll_upd_cb(dev)
+        await self.int_coll_upd_cb(dev)
 
     def find_alarm_byuid(self, aluid):
         """Simple search for an alarm entry by uid
@@ -407,7 +426,7 @@ class gnhast:
                 return alarm
         return None
 
-    def int_coll_upd_cb(self, dev):
+    async def int_coll_upd_cb(self, dev):
         """Internal device update callback
 
         Binds to self.coll_upd_cb
@@ -418,9 +437,22 @@ class gnhast:
         if self.coll_upd_cb is None:
             return
         else:
-            self.coll_upd_cb(dev)
-    
-    def int_coll_alarm_cb(self, alarm):
+            await self.coll_upd_cb(dev)
+
+    async def int_coll_reg_cb(self, dev):
+        """Internal device register callback
+
+        Binds to self.coll_reg_cb
+
+        :param dev: the device that was registered
+        """
+
+        if self.coll_reg_cb is None:
+            return
+        else:
+            await self.coll_reg_cb(dev)
+
+    async def int_coll_alarm_cb(self, alarm):
         """Internal callback for alarm
 
         You can bind a function to self.coll_alarm_cb and it will be called
@@ -432,7 +464,7 @@ class gnhast:
         if self.coll_alarm_cb is None:
             return
         else:
-            self.coll_alarm_cb(alarm)
+            await self.coll_alarm_cb(alarm)
 
     async def command_setalarm(self, cmd_word):
         """Handle an alarm set command from the server
@@ -482,7 +514,7 @@ class gnhast:
             self.alarms.append(alarm)
 
         # Call the internal callback for this alarm
-        self.int_coll_alarm_cb(alarm)
+        await self.int_coll_alarm_cb(alarm)
 
     async def gn_register_device(self, dev):
         """Register a new device with gnhast
@@ -506,7 +538,7 @@ class gnhast:
         self.writer.write(cmd.encode())
         await self.writer.drain()
 
-    async def gn_update_device(self, dev):
+    async def gn_update_device(self, dev, full=False):
         """Update the data for a device with gnhast
 
         :param dev: device to update
@@ -519,12 +551,16 @@ class gnhast:
         if dev['type'] == 0 or dev['subtype'] == 0:
             return
 
-        cmd = 'upd uid:{0} name:"{1}" '.format(dev['uid'], dev['name'])
-        if dev['rrdname'] != '':
-            cmd += 'rrdname:"{0}" '.format(dev['rrdname'])
-        if dev['scale'] != 0:
-            cmd += 'scale:{0} '.format(dev['scale'])
-        cmd += 'devt:{0} subt:{1} proto:1 '.format(dev['type'], dev['subtype'])
+        if full:
+            cmd = 'upd uid:{0} name:"{1}" '.format(dev['uid'], dev['name'])
+            if dev['rrdname'] != '':
+                cmd += 'rrdname:"{0}" '.format(dev['rrdname'])
+            if dev['scale'] != 0:
+                cmd += 'scale:{0} '.format(dev['scale'])
+                cmd += 'devt:{0} subt:{1} proto:1 '.format(dev['type'], dev['subtype'])
+        else:
+            cmd = 'upd uid:{0} '.format(dev['uid'])
+
         cmd += '{0}:{1}\n'.format(self.arg_by_subt[dev['subtype']], dev['data'])
 
         self.writer.write(cmd.encode())
@@ -576,7 +612,7 @@ class gnhast:
         if subtype > 0:
             cmd += 'subt:{0} '.format(subtype)
         if uid != '':
-            cmd += 'subt:"{0}" '.format(uid)
+            cmd += 'uid:"{0}" '.format(uid)
         cmd += '\n'
 
         self.writer.write(cmd.encode())
@@ -786,9 +822,9 @@ class gnhast:
                     self.LOG_WARNING("Ignoring garbage command")
                     continue
                 if cmd_words[0] == 'reg':
-                    self.command_reg(cmd_words)
+                    await self.command_reg(cmd_words)
                 elif cmd_words[0] == 'upd':
-                    self.command_upd(cmd_words)
+                    await self.command_upd(cmd_words)
                 elif cmd_words[0] == 'endldevs':
                     self.LOG_DEBUG('Ignored endldevs')
                 elif cmd_words[0] == 'ping':
