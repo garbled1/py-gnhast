@@ -637,6 +637,24 @@ class gnhast:
         self.writer.write(cmd.encode())
         await self.writer.drain()
 
+    async def gn_cfeed_device(self, dev):
+        """Ask gnhastd for a feed of updates for a device as the device changes
+
+        :param dev: device to ask for a cfeed about
+        :returns: None
+        :rtype: None
+
+        """
+        if dev['name'] == '' or dev['uid'] == '':
+            return
+        if dev['type'] == 0 or dev['subtype'] == 0:
+            return
+
+        cmd = 'cfeed uid:{0}\n'.format(dev['uid'])
+
+        self.writer.write(cmd.encode())
+        await self.writer.drain()
+
     async def gn_setalarm(self, aluid, altext, alsev, alchan):
         """Set or modify an alarm in gnhast
 
