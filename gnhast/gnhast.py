@@ -60,21 +60,38 @@ class gnhast:
         self.loop = loop
         self.devices = []
         self.alarms = []
-        self.arg_by_subt = ["none", "switch", "switch", "temp", "humid",
-                            "count", "pres", "speed", "dir", "ph", "wet",
-                            "hub", "lux", "volts", "wsec", "watt", "amps",
-                            "rain", "weather", "alarm", "number", "pct",
-                            "flow", "distance", "volume", "timer",
-                            "thmode", "thstate", "smnum", "blind",
-                            "collector", "trigger", "orp", "salinity",
-                            "moonph", "tristate"]
+        self.arg_by_subt = [ "none", "switch", "switch", "temp", "humid",
+                             "count", "pres", "speed", "dir", "ph", "wet",
+                             "hub", "lux", "volts", "wsec", "watt", "amps",
+                             "rain", "weather", "alarm", "number", "pct",
+                             "flow", "distance", "volume", "timer",
+                             "thmode", "thstate", "smnum", "blind",
+                             "collector", "trigger", "orp", "salinity",
+                             "daylight", "moonph", "tristate" ]
+
+        self.proto_map = [ 'NONE', 'insteon-v1', 'insteon-v2', 'insteon-v2cs',
+                           'sensor-owfs', 'brultech-gem', 'brultech-ecm1240',
+                           'wmr918', 'ad2usb', 'icaddy', 'venstar',
+                           'urtsi', 'collector', 'axiscamera', 'tuxedo',
+                           'neptuneapex', 'calculated', 'balboa',
+                           'generic', 'unused1', 'unused2', 'unused3',
+                           'unused4', 'unused5', 'unused6', 'unused7',
+                           'unused8', 'unused9', 'unused10', 'unused11',
+                           'unused12', 'unused13', 'unused14', 'mains_switch',
+                           'weather', 'sensor', 'sensor_indoor',
+                           'sensor_outdoor', 'sensor_elec', 'poweruse',
+                           'irrigation', 'entry', 'alarm', 'battery',
+                           'camera', 'aquarium', 'solar', 'pool',
+                           'waterheater', 'light', 'av', 'thermostat',
+                           'settings', 'blind' ]
+        
         self.DEVICE = {
             'uid': '', 'loc': '', 'name': '', 'rrdname': '',
             'proto': 0, 'type': 0, 'subtype': 0,
             'scale': 0,
             'data': 0, 'last': 0, 'min': 0, 'max': 0, 'avg': 0,
             'lowat': 0, 'hiwat': 0, 'change': 0,
-            'handler': 0, 'hargs': dict(),
+            'handler': 0, 'hargs': dict(), 'tags': dict(),
             'localdata': None,
             'lastupd': 0,
             'spamhandler': 0
@@ -325,11 +342,15 @@ class gnhast:
         # take a string like devt:1 and import it to a device
         data = cmdword.split(':')
         vwords = ['uid', 'name', 'rate', 'rrdname', 'devt', 'proto',
-                  'subt', 'client', 'scale', 'handler', 'hargs',
+                  'subt', 'client', 'scale', 'handler', 'hargs', 'tags'
                   'glist', 'dlist', 'collector', 'alsev', 'altext',
-                  'aluid', 'alchan', 'spamhandler', 'data']
+                  'aluid', 'alchan', 'spamhandler', 'data', 'hiwat', 'lowat']
 
         if data[0] in self.arg_by_subt:
+            data[0] = 'data'
+
+        # handle the special case for dimmers
+        if data[0] == 'dimmer':
             data[0] = 'data'
 
         if data[0] not in vwords:
@@ -603,9 +624,6 @@ class gnhast:
         :rtype: None
 
         """
-        if type == 0 and subtype == 0 and uid == '':
-            return
-
         cmd = 'ldevs '
         if type > 0:
             cmd += 'devt:{0} '.format(type)
@@ -716,7 +734,7 @@ class gnhast:
         self.writer.write(csend.encode())
         await self.writer.drain()
 
-    async def gn_ask_device(self, dev):
+    async def gn_ask_device(self, dev, full=False):
         """Ask gnhastd for current data for this device
 
         :param dev: device to ask gnhast about
@@ -729,7 +747,10 @@ class gnhast:
         if dev['type'] == 0 or dev['subtype'] == 0:
             return
 
-        cmd = 'ask uid:{0}\n'.format(dev['uid'])
+        if full:
+            cmd = 'askf uid:{0}\n'.format(dev['uid'])
+        else:
+            cmd = 'ask uid:{0}\n'.format(dev['uid'])
 
         self.writer.write(cmd.encode())
         await self.writer.drain()
@@ -879,9 +900,14 @@ class gnhast:
 
         """
         try:
-            if self.config['logfile']:
+            if self.log != sys.stderr:
+                self.log.close()
+        except:
+            pass
+        try:
+            if self.config['misc']['logfile']:
                 try:
-                    self.log = open(self.config['logfile'], 'a')
+                    self.log = open(self.config['misc']['logfile'], 'a')
                 except Exception as e:
                     self.log = sys.stderr
                     self.LOG_ERROR('cannot open log: {0}'.format(str(e)))
