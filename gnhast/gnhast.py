@@ -19,7 +19,7 @@ import copy
 import sys
 
 # Todo:
-# This module currently only supports bare sensors, no mod/chg support yet
+# no mod support yet
 
 LOG_INFO = 0
 LOG_ERROR = 1
@@ -60,6 +60,7 @@ class gnhast:
         self.loop = loop
         self.devices = []
         self.alarms = []
+        self.instance = 1
         self.arg_by_subt = [ "none", "switch", "switch", "temp", "humid",
                              "count", "pres", "speed", "dir", "ph", "wet",
                              "hub", "lux", "volts", "wsec", "watt", "amps",
@@ -130,6 +131,7 @@ class gnhast:
         self.coll_alarm_cb = None
         self.coll_upd_cb = None
         self.coll_reg_cb = None
+        self.coll_chg_cb = None
 
     def parse_convert_to_int(self, value, ptype):
         """Convert a parsed string to it's correct type
@@ -261,7 +263,8 @@ class gnhast:
                 self.config['devices'][m.group(1)]['uid'] = m.group(1)
                 # Now convert the entries
                 x = self.config['devices'][m.group(1)]
-                x['proto'] = 0
+                x['proto'] = self.parse_convert_to_int(x['proto'],
+                                                       self.proto_map)
                 x['type'] = self.parse_convert_to_int(x['type'], self.cf_type)
                 if 'subtype' in x:
                     x['subtype'] = self.parse_convert_to_int(x['subtype'],
@@ -364,7 +367,7 @@ class gnhast:
             data[0] = 'type'
 
         # save our previous value
-        if data[0] == 'data':
+        if data[0] == 'data' and 'data' in device.keys():
             device['last'] = device['data']
 
         device[data[0]] = self.typeofvalue(data[1])
@@ -434,6 +437,37 @@ class gnhast:
         self.LOG_DEBUG("Updated device: {0}".format(dev['name']))
         await self.int_coll_upd_cb(dev)
 
+    async def command_chg(self, cmd_word):
+        """Handle an change command (chg)
+
+        :param cmd_word: list of command word pairs
+        :returns: nothing
+        :rtype:
+
+        """
+        if not cmd_word[0] or cmd_word[0] == '':
+            return
+
+        if cmd_word[0] != 'chg':
+            return
+
+        dev = None
+        for word in cmd_word[1:]:
+            parts = word.split(':')
+            if parts[0] != 'uid':
+                continue
+            dev = self.find_dev_byuid(parts[1])
+
+        if dev is None:
+            return
+
+        for word in cmd_word[1:]:
+            self.word_to_dev(dev, word)
+        cur_time = int(time.time())
+        dev['lastupd'] = cur_time
+        self.LOG_DEBUG("Changed device: {0}".format(dev['name']))
+        await self.int_coll_chg_cb(dev)
+
     def find_alarm_byuid(self, aluid):
         """Simple search for an alarm entry by uid
 
@@ -459,6 +493,20 @@ class gnhast:
             return
         else:
             await self.coll_upd_cb(dev)
+
+    async def int_coll_chg_cb(self, dev):
+        """Internal device change callback
+
+        Binds to self.coll_chg_cb
+
+        :param dev: the device that was changed
+        """
+
+        if self.coll_chg_cb is None:
+            return
+        else:
+            await self.coll_chg_cb(self, dev)
+
 
     async def int_coll_reg_cb(self, dev):
         """Internal device register callback
@@ -550,12 +598,15 @@ class gnhast:
         if dev['type'] == 0 or dev['subtype'] == 0:
             return
 
+        if 'proto' not in dev.keys():
+            dev['proto'] = 18
+        
         cmd = 'reg uid:{0} name:"{1}" '.format(dev['uid'], dev['name'])
         if dev['rrdname'] != '':
             cmd += 'rrdname:"{0}" '.format(dev['rrdname'])
         if dev['scale'] != 0:
             cmd += 'scale:{0} '.format(dev['scale'])
-        cmd += 'devt:{0} subt:{1} proto:1\n'.format(dev['type'], dev['subtype'])
+        cmd += 'devt:{0} subt:{1} proto:{2}\n'.format(dev['type'], dev['subtype'], str(dev['proto']))
         self.writer.write(cmd.encode())
         await self.writer.drain()
 
@@ -791,7 +842,10 @@ class gnhast:
         :rtype:
 
         """
-        send = "client client:{0}\n".format(name)
+        if self.instance > 1:
+            send = "client client:{0}-{1:03d}\n".format(name, self.instance)
+        else:
+            send = "client client:{0}\n".format(name)
         self.writer.write(send.encode())
         await self.writer.drain()
 
@@ -864,6 +918,8 @@ class gnhast:
                     await self.command_reg(cmd_words)
                 elif cmd_words[0] == 'upd':
                     await self.command_upd(cmd_words)
+                elif cmd_words[0] == 'chg':
+                    await self.command_chg(cmd_words)
                 elif cmd_words[0] == 'endldevs':
                     self.LOG_DEBUG('Ignored endldevs')
                 elif cmd_words[0] == 'ping':
