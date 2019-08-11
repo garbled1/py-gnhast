@@ -316,7 +316,7 @@ class gnhast:
         new = self.parse_convert_to_int(newscale, self.cf_tscale)
 
         temp_s = Q_(temp, scaler[cur])
-        return temp_s.to(scaler_to[new])
+        return temp_s.to(scaler_to[new].magnitude)
 
     def typeofvalue(self, text):
         try:
