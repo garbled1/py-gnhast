@@ -608,8 +608,13 @@ class gnhast:
         if dev['scale'] != 0:
             cmd += 'scale:{0} '.format(dev['scale'])
         cmd += 'devt:{0} subt:{1} proto:{2}\n'.format(dev['type'], dev['subtype'], str(dev['proto']))
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_update_device: {0}'.format(str(e)))
+            await self.gn_connfail()
 
     async def gn_update_device(self, dev, full=False):
         """Update the data for a device with gnhast
@@ -636,8 +641,12 @@ class gnhast:
 
         cmd += '{0}:{1}\n'.format(self.arg_by_subt[dev['subtype']], dev['data'])
 
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_update_device: {0}'.format(str(e)))
+            await self.gn_connfail()
 
     async def gn_change_device(self, dev, newdata):
         """Ask gnhastd to change data about a device
@@ -663,8 +672,12 @@ class gnhast:
         cmd = 'chg uid:{0}" '.format(dev['uid'])
         cmd += '{0}:{1}\n'.format(self.arg_by_subt[dev['subtype']], dev['data'])
 
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_change_device: {0}'.format(str(e)))
+            await self.gn_connfail()
 
     async def gn_ldevs(self, uid='', type=0, subtype=0):
         """Send an ldevs command to gnhastd, asking for a list of devices
@@ -685,8 +698,12 @@ class gnhast:
             cmd += 'uid:"{0}" '.format(uid)
         cmd += '\n'
 
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_ldevs: {0}'.format(str(e)))
+            await self.gn_connfail()
 
     async def gn_feed_device(self, dev, rate):
         """Ask gnhastd for a continous feed of updates for a device
@@ -704,8 +721,12 @@ class gnhast:
 
         cmd = 'feed uid:{0} rate:{1}\n'.format(dev['uid'], rate)
 
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_feed_device: {0}'.format(str(e)))
+            await self.gn_connfail()
 
     async def gn_cfeed_device(self, dev):
         """Ask gnhastd for a feed of updates for a device as the device changes
@@ -722,8 +743,12 @@ class gnhast:
 
         cmd = 'cfeed uid:{0}\n'.format(dev['uid'])
 
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_cfeed_device: {0}'.format(str(e)))
+            await self.gn_connfail()
 
     async def gn_setalarm(self, aluid, altext, alsev, alchan):
         """Set or modify an alarm in gnhast
@@ -743,8 +768,13 @@ class gnhast:
             cmd = 'setalarm aluid:{0} altext:"{1}" alsev:{2} alchan:{3}\n' \
                   .format(aluid, altext, alsev, int(alchan))
 
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_setalarm: {0}'.format(str(e)))
+            await self.gn_connfail()
+
 
     async def gn_listenalarms(self, alsev, alchan):
         """Tell gnhastd we want to listen to a set of alarms
@@ -754,8 +784,13 @@ class gnhast:
         """
         cmd = 'listenalarms alchan:{0} alsev:{1}\n' \
               .format(int(alchan), alsev)
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_listenalarms: {0}'.format(str(e)))
+            await self.gn_connfail()
+
 
     async def gn_dumpalarms(self, alsev=1, alchan=AlarmChan.ALL, aluid=None):
         """Ask gnhastd to dump all current alarms to us
@@ -773,8 +808,13 @@ class gnhast:
         if aluid is not None:
             cmd += 'aluid:{0} '.format(aluid)
         cmd += '\n'
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_dumpalarms: {0}'.format(str(e)))
+            await self.gn_connfail()
+
 
     async def gn_rawcmd(self, cmd):
         """Send a raw dirty command to gnhast.  Appends the \n
@@ -783,8 +823,13 @@ class gnhast:
         """
 
         csend = cmd + '\n'
-        self.writer.write(csend.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(csend.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_rawcmd: {0}'.format(str(e)))
+            await self.gn_connfail()
+
 
     async def gn_ask_device(self, dev, full=False):
         """Ask gnhastd for current data for this device
@@ -804,16 +849,26 @@ class gnhast:
         else:
             cmd = 'ask uid:{0}\n'.format(dev['uid'])
 
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_ask_device: {0}'.format(str(e)))
+            await self.gn_connfail()
+
 
     async def gn_imalive(self):
         """Send a ping reply
         """
         self.LOG_DEBUG("PING REPLY")
         cmd = "imalive\n"
-        self.writer.write(cmd.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(cmd.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_imalive: {0}'.format(str(e)))
+            await self.gn_connfail()
+
 
     async def collector_healthcheck(self):
         """Check if we are ok, if so, send a imalive
@@ -832,8 +887,13 @@ class gnhast:
 
         """
         if self.writer is not None:
-            self.writer.write("disconnect\n".encode())
-            await self.writer.drain()
+            try:
+                self.writer.write("disconnect\n".encode())
+                await self.writer.drain()
+            except Exception as e:
+                self.LOG_ERROR('Write to gnhast failed in gn_disconnect: {0}'.format(str(e)))
+                await self.gn_connfail()
+
 
     async def gn_client_name(self, name):
         """Send our client name to gnhastd
@@ -847,8 +907,12 @@ class gnhast:
             send = "client client:{0}-{1:03d}\n".format(name, self.instance)
         else:
             send = "client client:{0}\n".format(name)
-        self.writer.write(send.encode())
-        await self.writer.drain()
+        try:
+            self.writer.write(send.encode())
+            await self.writer.drain()
+        except Exception as e:
+            self.LOG_ERROR('Write to gnhast failed in gn_client_name: {0}'.format(str(e)))
+            await self.gn_connfail()
 
     async def shutdown(self, sig, loop):
         """Shutdown the collector
@@ -879,6 +943,17 @@ class gnhast:
         await self.shutdown(signal.SIGTERM, self.loop)
         exit(1)
 
+    async def gn_connfail(self):
+        """A connection to gnhastd failed somehow
+        For now, just abort hard and let systemd fix it.
+        Maybe later, we hack it up to be more intelligent
+
+        :returns: None
+        :rtype: None
+        """
+        self.LOG_ERROR("Connection failure to gnhastd")
+        await self.abort()
+
     async def gn_connect(self, host='127.0.0.1', port=2920):
         """Create a new connection to gnhastd server
 
@@ -904,7 +979,12 @@ class gnhast:
         """
         valid_data = True
         while valid_data:
-            data = await self.reader.readline()
+            try:
+                data = await self.reader.readline()
+            except Exception as e:
+                self.LOG_ERROR('Read from gnhastd failed: {0}'.format(str(e)))
+                # fail hard here, let the service system fix it with a restart
+                await self.abort()
             if data.decode() == '':
                 valid_data = False
             command = data.decode()
